@@ -1,6 +1,87 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { buildSystemPrompt, DEAD_CAT_BOUNCE } from "./knowledge-base.js";
 
+// ========== TIMEFRAMES ==========
+const TIMEFRAMES = [
+  { key: "M1",  label: "M1",  minutes: 1,        vol: 0.0008, count: 60 },
+  { key: "M5",  label: "M5",  minutes: 5,        vol: 0.0018, count: 60 },
+  { key: "M15", label: "M15", minutes: 15,       vol: 0.0035, count: 60 },
+  { key: "M30", label: "M30", minutes: 30,       vol: 0.0055, count: 48 },
+  { key: "H1",  label: "H1",  minutes: 60,       vol: 0.008,  count: 48 },
+  { key: "H4",  label: "H4",  minutes: 240,      vol: 0.015,  count: 42 },
+  { key: "D1",  label: "D1",  minutes: 1440,     vol: 0.025,  count: 30 },
+  { key: "W1",  label: "W1",  minutes: 10080,    vol: 0.04,   count: 26 },
+  { key: "MN",  label: "MN",  minutes: 43200,    vol: 0.07,   count: 29 },
+];
+
+// Seeded random — เพื่อให้ข้อมูลเหมือนเดิมเมื่อสลับ TF
+function seededRandom(seed) {
+  let s = seed;
+  return () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+}
+
+// Format label per TF
+function fmtTime(tfKey, idx, total, baseDate) {
+  const tf = TIMEFRAMES.find(t => t.key === tfKey);
+  const now = baseDate.getTime();
+  const ms = (total - 1 - idx) * tf.minutes * 60 * 1000;
+  const d = new Date(now - ms);
+  const pad = (n) => String(n).padStart(2, "0");
+  if (tf.minutes < 60) return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  if (tf.minutes < 1440) return `${pad(d.getDate())}/${pad(d.getMonth()+1)} ${pad(d.getHours())}h`;
+  if (tf.minutes < 10080) return `${pad(d.getDate())}/${pad(d.getMonth()+1)}`;
+  if (tf.minutes < 43200) return `W${Math.ceil(d.getDate()/7)} ${d.toLocaleDateString("th",{month:"short"})}`;
+  return d.toLocaleDateString("th",{month:"short",year:"2-digit"});
+}
+
+// Generate plausible OHLC candles for a timeframe
+function generateCandles(tfKey, basePrice = 4523) {
+  const tf = TIMEFRAMES.find(t => t.key === tfKey);
+  const rnd = seededRandom(tfKey.charCodeAt(0) * 1000 + tfKey.length);
+  const baseDate = new Date();
+  const candles = [];
+  let price = basePrice * (1 - tf.vol * 3); // start lower, simulating trend up
+
+  // Inject a Dead Cat Bounce pattern in the middle for demo
+  const dcbStart = Math.floor(tf.count * 0.55);
+  const dcbEnd = dcbStart + 8;
+
+  for (let i = 0; i < tf.count; i++) {
+    const o = price;
+    let bias = 0;
+
+    // Trend bias (slightly up overall)
+    if (i < tf.count * 0.3) bias = tf.vol * 0.4;
+    else if (i < tf.count * 0.5) bias = -tf.vol * 0.3;
+    // Dead Cat Bounce simulation
+    else if (i >= dcbStart && i < dcbStart + 3) bias = -tf.vol * 0.8;  // drop
+    else if (i >= dcbStart + 3 && i < dcbStart + 5) bias = tf.vol * 0.5; // bounce
+    else if (i >= dcbStart + 5 && i < dcbEnd) bias = -tf.vol * 0.3;     // stuck/drop
+    else bias = (rnd() - 0.5) * tf.vol * 0.6;
+
+    const noise = (rnd() - 0.5) * tf.vol * 0.8;
+    const c = Math.max(o * (1 + bias + noise), 100);
+    const range = Math.abs(c - o) + o * tf.vol * (0.3 + rnd() * 0.7);
+    const h = Math.max(o, c) + rnd() * range * 0.5;
+    const l = Math.min(o, c) - rnd() * range * 0.5;
+    const v = Math.round(50 + rnd() * 250 + (Math.abs(c - o) / o) * 5000);
+
+    candles.push({
+      t: fmtTime(tfKey, i, tf.count, baseDate),
+      o: Math.round(o * 100) / 100,
+      h: Math.round(h * 100) / 100,
+      l: Math.round(l * 100) / 100,
+      c: Math.round(c * 100) / 100,
+      v,
+    });
+    price = c;
+  }
+  return candles;
+}
+
 // ========== DEAD CAT BOUNCE DETECTION ==========
 function detectDeadCatBounce(candles) {
   if (candles.length < 8) return null;
@@ -325,15 +406,30 @@ function RSIGauge({ value }) {
 
 // ========== MAIN ==========
 export default function GoldBrainDashboard() {
-  const [selectedIdx, setSelectedIdx] = useState(GOLD_CANDLES.length - 1);
+  const [timeframe, setTimeframe] = useState("MN");
+  const [selectedIdx, setSelectedIdx] = useState(0);
   const [aiResponse, setAiResponse] = useState("");
   const [thinking, setThinking] = useState(false);
   const [query, setQuery] = useState("");
   const [history, setHistory] = useState([]);
   const [autoAnalyzed, setAutoAnalyzed] = useState(false);
 
-  const selectedCandle = GOLD_CANDLES[selectedIdx];
-  const candlesUpTo = GOLD_CANDLES.slice(0, selectedIdx + 1);
+  // ใช้ข้อมูลตาม timeframe — MN ใช้ข้อมูลจริง (รายเดือน), อื่นๆ generate
+  const currentCandles = useMemo(() => {
+    if (timeframe === "MN") return GOLD_CANDLES;
+    return generateCandles(timeframe, 4523);
+  }, [timeframe]);
+
+  // Reset selectedIdx เมื่อสลับ TF
+  useEffect(() => {
+    setSelectedIdx(currentCandles.length - 1);
+    setHistory([]);
+    setAiResponse("");
+  }, [timeframe, currentCandles.length]);
+
+  const safeIdx = Math.min(selectedIdx, currentCandles.length - 1);
+  const selectedCandle = currentCandles[safeIdx];
+  const candlesUpTo = currentCandles.slice(0, safeIdx + 1);
   const patternKey = detectPattern(candlesUpTo);
   const pattern = patternKey ? PATTERNS[patternKey] : null;
   const rsi = calcRSI(candlesUpTo);
@@ -345,8 +441,10 @@ export default function GoldBrainDashboard() {
   const deadCat = detectDeadCatBounce(candlesUpTo);
 
   const buildContext = useCallback(() => {
+    const tfDesc = { M1:"1 นาที", M5:"5 นาที", M15:"15 นาที", M30:"30 นาที", H1:"1 ชั่วโมง", H4:"4 ชั่วโมง", D1:"รายวัน", W1:"รายสัปดาห์", MN:"รายเดือน" }[timeframe];
     const prev5 = candlesUpTo.slice(-5).map(c => `${c.t}(${c.c>c.o?"🟢":"🔴"}O:${c.o} H:${c.h} L:${c.l} C:${c.c} V:${c.v})`).join(", ");
-    let ctx = `แท่งเทียนทองคำ 5 แท่งล่าสุด: ${prev5}.\n`;
+    let ctx = `📊 Timeframe: ${timeframe} (${tfDesc}) — สำคัญ! ใช้กลยุทธ์ที่เหมาะกับ TF นี้\n`;
+    ctx += `แท่งเทียนทองคำ 5 แท่งล่าสุด: ${prev5}.\n`;
     ctx += `รูปแบบแท่งเทียน: ${pattern?.name || "ไม่ชัดเจน"}.\n`;
     ctx += `Indicators: RSI(7)=${rsi}, MA7=${ma7?.toFixed(0)}, MA20=${ma20?.toFixed(0)}.\n`;
     ctx += `แนวโน้มหลัก: ${trend} (Close ${ma7 > ma20 ? "เหนือ" : "ใต้"} MA20).\n`;
@@ -355,7 +453,7 @@ export default function GoldBrainDashboard() {
     }
     ctx += `ราคาปัจจุบัน: $${selectedCandle.c.toLocaleString()}\n`;
     return ctx;
-  }, [selectedIdx, pattern, rsi, ma7, ma20, trend, deadCat]);
+  }, [selectedIdx, pattern, rsi, ma7, ma20, trend, deadCat, timeframe, candlesUpTo, selectedCandle]);
 
   const askAI = async (overrideQ) => {
     const q = overrideQ || query;
@@ -472,11 +570,38 @@ export default function GoldBrainDashboard() {
 
             {/* Chart */}
             <div style={{ ...panel,padding:16 }}>
-              <div style={{ fontSize:12,color:G,marginBottom:10,letterSpacing:1 }}>
-                ✦ กราฟแท่งเทียน · คลิกแท่งเพื่อวิเคราะห์
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+                <div style={{ fontSize:12,color:G,letterSpacing:1 }}>
+                  ✦ กราฟแท่งเทียน · คลิกแท่งเพื่อวิเคราะห์
+                </div>
+                {/* Timeframe Selector */}
+                <div style={{ display:"flex", gap:2, padding:3, background:"rgba(255,215,0,0.05)", border:"1px solid rgba(255,215,0,0.15)", borderRadius:6 }}>
+                  {TIMEFRAMES.map(tf => (
+                    <button
+                      key={tf.key}
+                      onClick={() => setTimeframe(tf.key)}
+                      style={{
+                        padding:"4px 8px",
+                        fontSize:10,
+                        fontWeight: timeframe === tf.key ? 700 : 400,
+                        background: timeframe === tf.key ? "rgba(255,215,0,0.2)" : "transparent",
+                        border: timeframe === tf.key ? `1px solid ${G}` : "1px solid transparent",
+                        borderRadius:4,
+                        color: timeframe === tf.key ? G : "#8a7040",
+                        cursor:"pointer",
+                        fontFamily:"inherit",
+                        transition:"all 0.15s",
+                        textShadow: timeframe === tf.key ? `0 0 6px ${G}88` : "none",
+                      }}
+                    >{tf.label}</button>
+                  ))}
+                </div>
               </div>
-              <CandleChart candles={GOLD_CANDLES} selectedIdx={selectedIdx} onSelect={setSelectedIdx} patternKey={patternKey} />
-              <div style={{ fontSize:10,color:"#4a3810",marginTop:4,textAlign:"right" }}>กรอบเวลา: รายเดือน · แสดง 20 แท่งล่าสุด · แท่งกรอบทอง = รูปแบบที่ตรวจพบ</div>
+              <CandleChart candles={currentCandles} selectedIdx={safeIdx} onSelect={setSelectedIdx} patternKey={patternKey} />
+              <div style={{ fontSize:10,color:"#4a3810",marginTop:4,textAlign:"right" }}>
+                กรอบเวลา: <strong style={{ color: G }}>{timeframe}</strong> · แสดง {Math.min(20, currentCandles.length)} แท่งล่าสุด · แท่งกรอบทอง = รูปแบบที่ตรวจพบ
+                {timeframe !== "MN" && <span style={{ color:"#8a4810", marginLeft:8 }}>· 🎭 ข้อมูลจำลอง (demo)</span>}
+              </div>
             </div>
 
             {/* Pattern + Indicators row */}
