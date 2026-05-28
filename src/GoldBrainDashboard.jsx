@@ -1,4 +1,37 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { buildSystemPrompt, DEAD_CAT_BOUNCE } from "./knowledge-base.js";
+
+// ========== DEAD CAT BOUNCE DETECTION ==========
+function detectDeadCatBounce(candles) {
+  if (candles.length < 8) return null;
+  const recent = candles.slice(-8);
+  const closes = recent.map(c => c.c);
+
+  // Phase 1: ราคาร่วงแรง (4 แท่งแรก closes ลด)
+  const phase1Drop = closes[3] < closes[0] * 0.97;
+
+  // Phase 2: เด้งสั้น (แท่ง 5-6 บวก)
+  const phase2Bounce = closes[5] > closes[3] * 1.01;
+
+  // Phase 3: ติดต้าน (high แท่ง 5-7 ใกล้กัน — ไม่ผ่าน)
+  const highs = recent.slice(4, 7).map(c => c.h);
+  const phase3Stuck = Math.max(...highs) - Math.min(...highs) < closes[5] * 0.015;
+
+  // Phase 4: Lower High?
+  const lastHigh = recent[7].h;
+  const prevHigh = Math.max(...recent.slice(4, 7).map(c => c.h));
+  const lowerHigh = lastHigh < prevHigh;
+
+  if (phase1Drop && phase2Bounce && (phase3Stuck || lowerHigh)) {
+    return {
+      detected: true,
+      bias: "ขาย (เด้งหลอก)",
+      confidence: lowerHigh && phase3Stuck ? "สูง" : "กลาง",
+      lowerHigh,
+    };
+  }
+  return null;
+}
 
 // ========== DATA ==========
 const GOLD_CANDLES = [
@@ -309,11 +342,20 @@ export default function GoldBrainDashboard() {
   const trend = ma7 && ma20 ? (ma7 > ma20 ? "ขาขึ้น" : "ขาลง") : "ไม่ชัดเจน";
   const isGreen = selectedCandle.c > selectedCandle.o;
   const changeP = (((selectedCandle.c - selectedCandle.o) / selectedCandle.o) * 100).toFixed(2);
+  const deadCat = detectDeadCatBounce(candlesUpTo);
 
   const buildContext = useCallback(() => {
-    const prev3 = candlesUpTo.slice(-4).map(c => `${c.t}(${c.c>c.o?"🟢":"🔴"}O:${c.o} H:${c.h} L:${c.l} C:${c.c})`).join(", ");
-    return `แท่งเทียนทองคำ 3 แท่งล่าสุด: ${prev3}. รูปแบบที่พบ: ${pattern?.name || "ไม่ชัดเจน"}. RSI(7)=${rsi}. MA7=${ma7?.toFixed(0)} MA20=${ma20?.toFixed(0)}. แนวโน้ม: ${trend}. ราคาปัจจุบัน: $${selectedCandle.c}`;
-  }, [selectedIdx, pattern, rsi, ma7, ma20, trend]);
+    const prev5 = candlesUpTo.slice(-5).map(c => `${c.t}(${c.c>c.o?"🟢":"🔴"}O:${c.o} H:${c.h} L:${c.l} C:${c.c} V:${c.v})`).join(", ");
+    let ctx = `แท่งเทียนทองคำ 5 แท่งล่าสุด: ${prev5}.\n`;
+    ctx += `รูปแบบแท่งเทียน: ${pattern?.name || "ไม่ชัดเจน"}.\n`;
+    ctx += `Indicators: RSI(7)=${rsi}, MA7=${ma7?.toFixed(0)}, MA20=${ma20?.toFixed(0)}.\n`;
+    ctx += `แนวโน้มหลัก: ${trend} (Close ${ma7 > ma20 ? "เหนือ" : "ใต้"} MA20).\n`;
+    if (deadCat) {
+      ctx += `🚨 พบ Dead Cat Bounce (เด้งหลอก)! Confidence: ${deadCat.confidence}, Lower High: ${deadCat.lowerHigh ? "Yes ⚠️" : "No"}.\n`;
+    }
+    ctx += `ราคาปัจจุบัน: $${selectedCandle.c.toLocaleString()}\n`;
+    return ctx;
+  }, [selectedIdx, pattern, rsi, ma7, ma20, trend, deadCat]);
 
   const askAI = async (overrideQ) => {
     const q = overrideQ || query;
@@ -328,8 +370,8 @@ export default function GoldBrainDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-5-20250929",
-          max_tokens: 1000,
-          system: `คุณคือ "สมองAI ดวงตาเทพ" — นักเทรดทองคำผู้เชี่ยวชาญที่จำรูปแบบแท่งเทียนได้ขึ้นใจ. ข้อมูลปัจจุบัน: ${ctx}. ตอบภาษาไทย กระชับ ฉลาด ตรงประเด็น แนะนำเทคนิคและ entry/SL/TP ที่ชัดเจน ไม่เกิน 6 ประโยค`,
+          max_tokens: 1500,
+          system: buildSystemPrompt(ctx),
           messages: newHist,
         }),
       });
@@ -401,6 +443,26 @@ export default function GoldBrainDashboard() {
 
           {/* LEFT */}
           <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
+
+            {/* 🚨 Dead Cat Bounce Alert */}
+            {deadCat && (
+              <div style={{ ...panel, padding: 12, borderColor: "rgba(255,77,109,0.5)", background: "rgba(50,0,10,0.95)", animation: "fadeUp 0.5s ease" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontSize: 28 }}>🚨</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, color: "#ff4d6d", fontWeight: 700, marginBottom: 2 }}>
+                      Dead Cat Bounce ตรวจพบ! · เด้งหลอก
+                    </div>
+                    <div style={{ fontSize: 10, color: "#c8a860", lineHeight: 1.5 }}>
+                      สัญญาณ: {deadCat.lowerHigh ? "Lower High ⚠️ " : ""}เด้งใกล้แนวต้าน — confidence: <strong style={{ color: "#ff4d6d" }}>{deadCat.confidence}</strong>
+                    </div>
+                    <div style={{ fontSize: 10, color: "#8a7040", marginTop: 4 }}>
+                      💡 รอ confirm แท่งกลับลง + Volume ก่อน Short
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Chart */}
             <div style={{ ...panel,padding:16 }}>

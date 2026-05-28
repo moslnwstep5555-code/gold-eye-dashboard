@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<title>QR Code · สมองAI ดวงตาเทพ</title>
+<style>
+  body{margin:0;background:#050300;color:#e8d5a0;font-family:'Sarabun','Segoe UI',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:32px}
+  h1{color:#ffd700;text-shadow:0 0 18px #ffd70055;letter-spacing:2px;margin:0 0 8px;font-size:26px}
+  .sub{color:#8a7040;font-size:13px;letter-spacing:1px;margin-bottom:8px}
+  .row{display:flex;gap:32px;flex-wrap:wrap;justify-content:center}
+  .card{background:rgba(12,8,2,.92);border:1px solid rgba(255,215,0,.25);border-radius:18px;padding:24px;text-align:center;backdrop-filter:blur(8px);min-width:280px;box-shadow:0 0 40px rgba(255,215,0,.08)}
+  .card h2{color:#ffd700;font-size:16px;margin:0 0 14px;letter-spacing:1px}
+  .qr{background:#fff;padding:14px;border-radius:12px;display:inline-block}
+  .qr img{display:block;width:240px;height:240px}
+  .url{color:#6a5020;font-size:10px;margin-top:12px;word-break:break-all;max-width:240px;line-height:1.5}
+  .tip{color:#c8a860;font-size:12px;margin-top:8px}
+  .badge{display:inline-block;background:rgba(255,215,0,.1);border:1px solid rgba(255,215,0,.3);color:#ffd700;padding:4px 12px;border-radius:20px;font-size:10px;letter-spacing:1px;margin-bottom:8px}
+  .footer{color:#4a3810;font-size:11px;margin-top:12px;text-align:center}
+  .star{position:absolute;border-radius:50%;background:#ffd700;opacity:.3;animation:tw 3s ease-in-out infinite}
+  @keyframes tw{0%,100%{opacity:.1}50%{opacity:.5}}
+</style>
+</head>
+<body>
+  <div>
+    <h1>👁 สมองAI ดวงตาเทพ</h1>
+    <div class="sub" style="text-align:center">SCAN QR · เปิดในมือถือ</div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <span class="badge">⭐ แนะนำ · ลิ้งค์ตรง</span>
+      <h2>📤 อัพรูปทันที (ข้าม Add file)</h2>
+      <div class="qr">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=https%3A%2F%2Fgithub.com%2Fmoslnwstep5555-code%2Fgold-eye-dashboard%2Fupload%2Fmain%2Ftrading-techniques&margin=0&ecc=H" alt="QR upload direct">
+      </div>
+      <div class="tip">สแกนแล้วเข้าหน้าอัพโหลดเลย!</div>
+      <div class="url">github.com/.../upload/main/trading-techniques</div>
+    </div>
+
+    <div class="card">
+      <h2>📂 หน้า Repo หลัก</h2>
+      <div class="qr">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=480x480&data=https%3A%2F%2Fgithub.com%2Fmoslnwstep5555-code%2Fgold-eye-dashboard&margin=0&ecc=H" alt="QR repo">
+      </div>
+      <div class="tip">ดูไฟล์ทั้งหมดในโปรเจกต์</div>
+      <div class="url">github.com/moslnwstep5555-code/gold-eye-dashboard</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    💡 เปิดกล้องมือถือ → เล็งไปที่ QR → แตะลิ้งค์ที่ขึ้นมา<br>
+    หรือใช้ Google Lens / สแกนเนอร์ QR ในแอปธนาคารก็ได้
+  </div>
+</body>
+</html>
