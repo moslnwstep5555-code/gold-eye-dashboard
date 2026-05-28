@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { buildSystemPrompt, DEAD_CAT_BOUNCE } from "./knowledge-base.js";
+import LiveGoldChart from "./LiveGoldChart.jsx";
 
 // ========== TIMEFRAMES ==========
 const TIMEFRAMES = [
@@ -406,7 +407,8 @@ function RSIGauge({ value }) {
 
 // ========== MAIN ==========
 export default function GoldBrainDashboard() {
-  const [timeframe, setTimeframe] = useState("MN");
+  const [timeframe, setTimeframe] = useState("H1");
+  const [chartMode, setChartMode] = useState("live"); // "live" = real-time, "demo" = AI clickable
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [aiResponse, setAiResponse] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -570,9 +572,35 @@ export default function GoldBrainDashboard() {
 
             {/* Chart */}
             <div style={{ ...panel,padding:16 }}>
-              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
-                <div style={{ fontSize:12,color:G,letterSpacing:1 }}>
-                  ✦ กราฟแท่งเทียน · คลิกแท่งเพื่อวิเคราะห์
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10, flexWrap:"wrap", gap:8 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <div style={{ fontSize:12,color:G,letterSpacing:1 }}>
+                    ✦ {chartMode === "live" ? "กราฟทอง REAL-TIME 🔴" : "กราฟ Demo (คลิกแท่งวิเคราะห์)"}
+                  </div>
+                  {/* Live/Demo toggle */}
+                  <div style={{ display:"flex", gap:2, padding:2, background:"rgba(255,215,0,0.05)", border:"1px solid rgba(255,215,0,0.15)", borderRadius:6 }}>
+                    {[
+                      { key: "live", label: "🔴 Live", color: "#ff4d6d" },
+                      { key: "demo", label: "🎭 Demo", color: "#c084fc" },
+                    ].map(m => (
+                      <button
+                        key={m.key}
+                        onClick={() => setChartMode(m.key)}
+                        style={{
+                          padding:"4px 10px",
+                          fontSize:10,
+                          fontWeight: chartMode === m.key ? 700 : 400,
+                          background: chartMode === m.key ? `${m.color}22` : "transparent",
+                          border: chartMode === m.key ? `1px solid ${m.color}` : "1px solid transparent",
+                          borderRadius:4,
+                          color: chartMode === m.key ? m.color : "#8a7040",
+                          cursor:"pointer",
+                          fontFamily:"inherit",
+                          transition:"all 0.15s",
+                        }}
+                      >{m.label}</button>
+                    ))}
+                  </div>
                 </div>
                 {/* Timeframe Selector */}
                 <div style={{ display:"flex", gap:2, padding:3, background:"rgba(255,215,0,0.05)", border:"1px solid rgba(255,215,0,0.15)", borderRadius:6 }}>
@@ -597,10 +625,16 @@ export default function GoldBrainDashboard() {
                   ))}
                 </div>
               </div>
-              <CandleChart candles={currentCandles} selectedIdx={safeIdx} onSelect={setSelectedIdx} patternKey={patternKey} />
+              {chartMode === "live" ? (
+                <LiveGoldChart timeframe={timeframe} height={460} />
+              ) : (
+                <CandleChart candles={currentCandles} selectedIdx={safeIdx} onSelect={setSelectedIdx} patternKey={patternKey} />
+              )}
               <div style={{ fontSize:10,color:"#4a3810",marginTop:4,textAlign:"right" }}>
-                กรอบเวลา: <strong style={{ color: G }}>{timeframe}</strong> · แสดง {Math.min(20, currentCandles.length)} แท่งล่าสุด · แท่งกรอบทอง = รูปแบบที่ตรวจพบ
-                {timeframe !== "MN" && <span style={{ color:"#8a4810", marginLeft:8 }}>· 🎭 ข้อมูลจำลอง (demo)</span>}
+                {chartMode === "live"
+                  ? <>กรอบเวลา: <strong style={{ color: G }}>{timeframe}</strong> · ข้อมูลจริงจาก OANDA · XAU/USD · <span style={{ color:"#ff4d6d" }}>● LIVE</span></>
+                  : <>กรอบเวลา: <strong style={{ color: G }}>{timeframe}</strong> · แสดง {Math.min(20, currentCandles.length)} แท่งล่าสุด · แท่งกรอบทอง = รูปแบบที่ตรวจพบ {timeframe !== "MN" && <span style={{ color:"#8a4810", marginLeft:8 }}>· 🎭 ข้อมูลจำลอง</span>}</>
+                }
               </div>
             </div>
 
