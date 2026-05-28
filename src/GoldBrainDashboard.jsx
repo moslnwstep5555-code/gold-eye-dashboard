@@ -365,21 +365,27 @@ export default function GoldBrainDashboard() {
     const ctx = buildContext();
     const newHist = [...history, { role: "user", content: q }];
     try {
-      const res = await fetch("/api/messages", {
+      // Gemini API format
+      const geminiContents = newHist.map(m => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      }));
+      const res = await fetch("/api/gemini", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-5-20250929",
-          max_tokens: 1500,
-          system: buildSystemPrompt(ctx),
-          messages: newHist,
+          contents: geminiContents,
+          systemInstruction: { parts: [{ text: buildSystemPrompt(ctx) }] },
+          generationConfig: { temperature: 0.7, maxOutputTokens: 1500 },
         }),
       });
       const data = await res.json();
-      const reply = data.content?.[0]?.text || "วิเคราะห์ไม่ได้";
+      const reply = data.candidates?.[0]?.content?.parts?.[0]?.text
+        || data.error?.message
+        || "วิเคราะห์ไม่ได้";
       setAiResponse(reply);
       setHistory([...newHist, { role: "assistant", content: reply }]);
-    } catch { setAiResponse("⚠️ เชื่อมต่อไม่ได้"); }
+    } catch (e) { setAiResponse("⚠️ เชื่อมต่อไม่ได้: " + e.message); }
     setThinking(false);
   };
 
